@@ -458,11 +458,16 @@ def submit_answer(answer):
         "answer":      answer,
     }
 
-    # ── TRUE RESUME: inject answer as the resume value ──────────────────────
-    # The graph paused before response_evaluator; Command(resume=answer)
-    # passes the student's answer to that node and continues the graph.
+    # ── INJECT ANSWER INTO STATE, then resume ───────────────────────────────
+    # interrupt_before does NOT pass Command(resume=value) as a node argument.
+    # We must update the checkpoint state with the answer so response_evaluator
+    # can read it from state.student_answers[-1].
+    current_answers = list(gs.get("student_answers", []))
+    current_answers.append(answer)
+    g.update_state(cfg, {"student_answers": current_answers})
+
     with st.spinner("⚙️  Scoring your answer…"):
-        g.invoke(Command(resume=answer), config=cfg)
+        g.invoke(None, config=cfg)   # resume from checkpoint (answer is in state)
 
     snap = g.get_state(cfg)
     ngs  = snap.values
