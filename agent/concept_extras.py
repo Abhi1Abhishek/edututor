@@ -40,39 +40,58 @@ def _layout(**kwargs):
 # RECURSION
 # ─────────────────────────────────────────────────────────────────────────────
 def chart_recursion():
-    """Fibonacci call-count: recursive vs DP."""
-    ns = list(range(1, 16))
-    memo = {}
-    def fib_dp(n):
-        if n <= 1: return n
-        if n in memo: return memo[n]
-        memo[n] = fib_dp(n-1) + fib_dp(n-2)
-        return memo[n]
-
+    """Fibonacci call-count with animation slider for n=1..20."""
+    import sys; sys.setrecursionlimit(5000)
+    ns = list(range(1, 21))
     call_counts = []
     def fib_naive(n):
         call_counts.append(1)
         if n <= 1: return n
         return fib_naive(n-1) + fib_naive(n-2)
-
     naive_calls = []
     for n in ns:
-        call_counts.clear()
-        fib_naive(n)
+        call_counts.clear(); fib_naive(n)
         naive_calls.append(len(call_counts))
+    dp_calls = ns
 
-    dp_calls = ns  # DP = exactly n calls
+    frames = []
+    for k in range(1, 21):
+        frames.append(go.Frame(
+            data=[
+                go.Bar(x=ns[:k], y=naive_calls[:k], name="Naive Recursion",
+                       marker_color=ACC5, text=naive_calls[:k], textposition="outside",
+                       hovertemplate="n=%{x}<br>Naive calls: <b>%{y}</b><extra></extra>"),
+                go.Bar(x=ns[:k], y=dp_calls[:k], name="Memoized DP",
+                       marker_color=ACC3, text=dp_calls[:k], textposition="outside",
+                       hovertemplate="n=%{x}<br>DP calls: <b>%{y}</b><extra></extra>"),
+            ], name=str(k)
+        ))
 
-    fig = go.Figure()
-    fig.add_trace(go.Bar(x=ns, y=naive_calls, name="Naive Recursion", marker_color=ACC5,
-                         text=naive_calls, textposition="outside"))
-    fig.add_trace(go.Bar(x=ns, y=dp_calls,    name="Memoized DP",     marker_color=ACC3,
-                         text=dp_calls, textposition="outside"))
-    fig.update_layout(**_layout(
-        title="Fibonacci: Function calls — Naive vs Memoized",
-        barmode="group", xaxis_title="n", yaxis_title="# calls",
-        height=340,
-    ))
+    fig = go.Figure(
+        data=frames[14].data,
+        frames=frames,
+        layout=_layout(
+            title="Fibonacci: Naive Calls Explode — DP stays linear",
+            barmode="group", xaxis_title="n", yaxis_title="# function calls",
+            height=380,
+            updatemenus=[dict(
+                type="buttons", showactive=False, y=1.18, x=0.05,
+                buttons=[dict(label="▶ Animate",
+                              method="animate",
+                              args=[None, {"frame": {"duration": 200}, "fromcurrent": True}]),
+                         dict(label="⏸ Pause",
+                              method="animate",
+                              args=[[None], {"frame": {"duration": 0}, "mode": "immediate"}])]
+            )],
+            sliders=[dict(
+                active=14,
+                currentvalue={"prefix": "n = ", "visible": True, "font": {"color": TXT}},
+                pad={"t": 50},
+                steps=[dict(args=[[str(n)], {"frame": {"duration": 0}, "mode": "immediate"}],
+                            label=str(n), method="animate") for n in range(1, 21)]
+            )],
+        )
+    )
     return fig
 
 
@@ -106,31 +125,54 @@ FACTS_RECURSION = [
 # BAYES THEOREM
 # ─────────────────────────────────────────────────────────────────────────────
 def chart_bayes():
-    """Interactive belief update: prior → posterior."""
-    labels = ["P(H) prior", "P(H|E) posterior"]
-    prior = 0.1
-    likelihood = 0.9
-    p_evidence = prior * likelihood + (1 - prior) * 0.05
-    posterior = (likelihood * prior) / p_evidence
+    """Bayes belief update with 3 interactive scenario buttons."""
+    scenarios = [
+        ("🏥 Medical Test",   0.01, 0.95, 0.05),
+        ("📧 Spam Filter",    0.30, 0.98, 0.02),
+        ("🪙 Coin Flip",      0.50, 0.80, 0.20),
+    ]
+    def posterior(prior, lh, fp):
+        pe = lh*prior + fp*(1-prior)
+        return (lh*prior)/pe
 
-    fig = go.Figure()
-    fig.add_trace(go.Bar(
-        x=labels,
-        y=[prior, posterior],
+    # Default: medical test
+    prior0, lh0, fp0 = 0.01, 0.95, 0.05
+    post0 = posterior(prior0, lh0, fp0)
+
+    buttons = []
+    for name, pr, lh, fp in scenarios:
+        post = posterior(pr, lh, fp)
+        buttons.append(dict(
+            label=name, method="update",
+            args=[{"y": [[pr, post], [pr, post]],
+                   "text": [[f"{pr:.1%}", f"{post:.1%}"]],
+                   "marker.color": [[ACC2, ACC3]]},
+                  {"title": f"Bayes: {name}  |  Prior={pr:.0%}  →  Posterior={post:.1%}",
+                   "annotations[0].text": f"⬆ Belief jumped by {post-pr:+.1%} after evidence"}]
+        ))
+
+    fig = go.Figure(go.Bar(
+        x=["Prior P(H)", "Posterior P(H|E)"],
+        y=[prior0, post0],
         marker_color=[ACC2, ACC3],
-        text=[f"{prior:.1%}", f"{posterior:.1%}"],
-        textposition="outside",
-        width=0.35,
+        text=[f"{prior0:.1%}", f"{post0:.1%}"],
+        textposition="outside", width=0.4,
+        hovertemplate="%{x}<br>Probability: <b>%{y:.1%}</b><extra></extra>",
     ))
-    fig.add_annotation(
-        x=0.5, y=(prior+posterior)/2 + 0.05,
-        text=f"⬆ Updated by {posterior-prior:.1%} after evidence",
-        showarrow=False, font=dict(color=ACC4, size=13), xref="paper", yref="y"
-    )
+    fig.add_annotation(x=0.5, y=post0*0.55,
+        text=f"⬆ Belief jumped by {post0-prior0:+.1%} after evidence",
+        showarrow=False, font=dict(color=ACC4, size=13), xref="paper")
     fig.update_layout(**_layout(
-        title="Bayes: Belief Update After Seeing Evidence",
-        yaxis=dict(range=[0, 1.1], gridcolor=GRID, tickformat=".0%"),
-        height=320,
+        title=f"Bayes: Medical Test  |  Prior=1%  →  Posterior={post0:.1%}",
+        yaxis=dict(range=[0, 1.15], tickformat=".0%", gridcolor=GRID),
+        height=350,
+        updatemenus=[dict(
+            type="buttons", direction="right", showactive=True,
+            x=0.5, xanchor="center", y=1.18,
+            buttons=buttons,
+            bgcolor="rgba(139,92,246,0.2)", bordercolor=ACC1,
+            font=dict(color=TXT)
+        )]
     ))
     return fig
 
@@ -169,43 +211,79 @@ FACTS_BAYES = [
 # BINARY SEARCH TREE
 # ─────────────────────────────────────────────────────────────────────────────
 def chart_bst():
-    """Scatter-plot tree structure for BST [8, 4, 12, 2, 6, 10, 14]."""
+    """BST with interactive Search-path highlighting buttons."""
     nodes = [
-        (8,  0.50, 1.0, "8 (root)"),
-        (4,  0.25, 0.6, "4"),
-        (12, 0.75, 0.6, "12"),
-        (2,  0.12, 0.2, "2"),
-        (6,  0.38, 0.2, "6"),
-        (10, 0.62, 0.2, "10"),
-        (14, 0.88, 0.2, "14"),
+        (8,  0.50, 1.0, "8 — root", 0),
+        (4,  0.25, 0.6, "4 — left child of 8", 1),
+        (12, 0.75, 0.6, "12 — right child of 8", 1),
+        (2,  0.12, 0.2, "2 — left child of 4", 2),
+        (6,  0.38, 0.2, "6 — right child of 4", 2),
+        (10, 0.62, 0.2, "10 — left child of 12", 2),
+        (14, 0.88, 0.2, "14 — right child of 12", 2),
     ]
     edges = [(0,1),(0,2),(1,3),(1,4),(2,5),(2,6)]
+    search_paths = {
+        "Search 2":  [0,1,3],
+        "Search 6":  [0,1,4],
+        "Search 10": [0,2,5],
+        "Search 14": [0,2,6],
+    }
+    base_colors = [ACC1]+[ACC2]*2+[ACC3]*4
 
-    fig = go.Figure()
-    # edges
-    for p, c in edges:
-        fig.add_trace(go.Scatter(
-            x=[nodes[p][1], nodes[c][1]], y=[nodes[p][2], nodes[c][2]],
-            mode="lines", line=dict(color=GRID, width=2), showlegend=False,
-            hoverinfo="none",
+    def make_colors(path):
+        c = list(base_colors)
+        for i in path: c[i] = ACC4
+        return c
+
+    def build_traces(path):
+        traces = []
+        edge_colors = []
+        for p,c in edges:
+            ec = ACC4 if (p in path and c in path) else "rgba(255,255,255,0.08)"
+            edge_colors.append(ec)
+            traces.append(go.Scatter(
+                x=[nodes[p][1], nodes[c][1]], y=[nodes[p][2], nodes[c][2]],
+                mode="lines", line=dict(color=ec, width=3), showlegend=False, hoverinfo="none"
+            ))
+        traces.append(go.Scatter(
+            x=[n[1] for n in nodes], y=[n[2] for n in nodes],
+            mode="markers+text",
+            marker=dict(size=42, color=make_colors(path), line=dict(color="white", width=2)),
+            text=[n[0] for n in nodes], textfont=dict(size=15, color="white"),
+            textposition="middle center",
+            hovertemplate=[
+                f"<b>Value: {n[0]}</b><br>Depth: {n[4]}<br>{'🔍 On search path' if i in path else 'Not visited'}<extra></extra>"
+                for i,n in enumerate(nodes)
+            ],
+            showlegend=False
         ))
-    # nodes
-    colors = [ACC1, ACC2, ACC2, ACC3, ACC3, ACC3, ACC3]
-    fig.add_trace(go.Scatter(
-        x=[n[1] for n in nodes], y=[n[2] for n in nodes],
-        mode="markers+text",
-        marker=dict(size=38, color=colors, line=dict(color="white", width=1.5)),
-        text=[n[0] for n in nodes],
-        textfont=dict(size=14, color="white"),
-        textposition="middle center",
-        hovertext=[n[3] for n in nodes],
-        hoverinfo="text",
-        showlegend=False,
-    ))
+        return traces
+
+    default = build_traces([0,2,5])
+    buttons = []
+    for label, path in search_paths.items():
+        trs = build_traces(path)
+        steps = len(path)
+        buttons.append(dict(
+            label=label, method="update",
+            args=[{"x": [t.x for t in trs], "y": [t.y for t in trs],
+                   "marker.color": [t.marker.color if hasattr(t,'marker') else None for t in trs]},
+                  {"title": f"BST Search: {label} — found in {steps} comparisons ({['O(log n)']*4[0]})"}]
+        ))
+
+    fig = go.Figure(data=default)
     fig.update_layout(**_layout(
-        title="BST: [8, 4, 12, 2, 6, 10, 14] — left < root < right",
-        xaxis=dict(visible=False), yaxis=dict(visible=False),
-        height=330,
+        title="BST: Search 10 — highlighted path (3 comparisons)",
+        xaxis=dict(visible=False, range=[-0.05,1.05]),
+        yaxis=dict(visible=False, range=[-0.1,1.2]),
+        height=370,
+        updatemenus=[dict(
+            type="buttons", direction="right", showactive=True,
+            x=0.5, xanchor="center", y=1.2,
+            buttons=buttons,
+            bgcolor="rgba(96,165,250,0.15)", bordercolor=ACC2,
+            font=dict(color=TXT)
+        )]
     ))
     return fig
 
@@ -250,27 +328,48 @@ FACTS_BST = [
 # DYNAMIC PROGRAMMING
 # ─────────────────────────────────────────────────────────────────────────────
 def chart_dp():
-    """DP memoization table for Fibonacci."""
-    n = 10
-    dp = [0] * (n + 1)
-    dp[1] = 1
-    for i in range(2, n + 1):
-        dp[i] = dp[i-1] + dp[i-2]
+    """DP table with buttons to show different n values and hover formula."""
+    def make_dp(n):
+        dp = [0]*(n+1); dp[1]=1 if n>=1 else 0
+        for i in range(2, n+1): dp[i]=dp[i-1]+dp[i-2]
+        return dp
 
+    buttons = []
+    for n in [8, 12, 16, 20]:
+        dp = make_dp(n)
+        ht = [f"<b>F({i})</b><br>Value: {dp[i]}<br>" +
+              (f"= F({i-1})+F({i-2}) = {dp[i-1]}+{dp[i-2]}" if i>=2 else "Base case")
+              + "<extra></extra>" for i in range(n+1)]
+        buttons.append(dict(
+            label=f"n={n}", method="update",
+            args=[{"x": [[f"F({i})" for i in range(n+1)]],
+                   "y": [dp], "text": [dp],
+                   "marker.color": [dp],
+                   "hovertemplate": [ht]},
+                  {"title": f"DP Table: Fibonacci F(0)…F({n}) — hover a bar for formula"}]
+        ))
+
+    dp0 = make_dp(12)
+    ht0 = [f"<b>F({i})</b><br>Value: {dp0[i]}<br>" +
+           (f"= F({i-1})+F({i-2}) = {dp0[i-1]}+{dp0[i-2]}" if i>=2 else "Base case")
+           + "<extra></extra>" for i in range(13)]
     fig = go.Figure(go.Bar(
-        x=[f"F({i})" for i in range(n+1)],
-        y=dp,
-        marker=dict(
-            color=dp,
-            colorscale=[[0,"#7c3aed"],[1,"#34d399"]],
-            showscale=False,
-        ),
-        text=dp, textposition="outside",
+        x=[f"F({i})" for i in range(13)], y=dp0,
+        marker=dict(color=dp0, colorscale=[[0,"#7c3aed"],[1,"#34d399"]], showscale=False),
+        text=dp0, textposition="outside",
+        hovertemplate=ht0,
     ))
     fig.update_layout(**_layout(
-        title="DP Memoization Table: Fibonacci F(0)…F(10)",
+        title="DP Table: Fibonacci F(0)…F(12) — hover a bar for formula",
         xaxis_title="Sub-problem", yaxis_title="Value stored",
-        height=320,
+        height=350,
+        updatemenus=[dict(
+            type="buttons", direction="right", showactive=True,
+            x=0.5, xanchor="center", y=1.18,
+            buttons=buttons,
+            bgcolor="rgba(167,139,250,0.15)", bordercolor=ACC1,
+            font=dict(color=TXT)
+        )]
     ))
     return fig
 
@@ -386,26 +485,39 @@ FACTS_NN = [
 # BIG O NOTATION
 # ─────────────────────────────────────────────────────────────────────────────
 def chart_bigo():
-    """Complexity growth rate comparison."""
-    n  = np.linspace(1, 20, 200)
+    """Big O with range slider, hover showing exact ops and ratio vs O(1)."""
+    n = np.linspace(1, 50, 500)
     curves = [
-        ("O(1)",        np.ones_like(n),       ACC3),
-        ("O(log n)",    np.log2(n),             ACC2),
-        ("O(n)",        n,                      ACC1),
-        ("O(n log n)",  n * np.log2(n),         ACC4),
-        ("O(n²)",       n**2,                   ACC5),
+        ("O(1)",       np.ones_like(n),    ACC3),
+        ("O(log n)",   np.log2(n),         ACC2),
+        ("O(n)",       n,                  ACC1),
+        ("O(n log n)", n*np.log2(n),       ACC4),
+        ("O(n²)",      n**2,               ACC5),
     ]
     fig = go.Figure()
     for name, y, color in curves:
         fig.add_trace(go.Scatter(
             x=n, y=y, name=name,
             mode="lines", line=dict(color=color, width=2.5),
+            hovertemplate=(
+                f"<b>{name}</b><br>"
+                "n = %{x:.0f}<br>"
+                "Operations ≈ %{y:.1f}<br>"
+                "<extra></extra>"
+            )
         ))
     fig.update_layout(**_layout(
-        title="Big O: How algorithms scale as input grows",
-        xaxis_title="Input size (n)", yaxis_title="Operations",
-        yaxis=dict(range=[0, 120], gridcolor=GRID),
-        height=360,
+        title="Big O: Drag the range slider to zoom — hover for exact values",
+        xaxis=dict(
+            title="Input size (n)", gridcolor=GRID,
+            rangeslider=dict(visible=True, thickness=0.06,
+                             bgcolor="rgba(139,92,246,0.1)"),
+            range=[1, 30],
+        ),
+        yaxis=dict(title="Operations", range=[0, 300], gridcolor=GRID),
+        height=420,
+        hovermode="x unified",
+        legend=dict(orientation="h", y=1.12, x=0.5, xanchor="center"),
     ))
     return fig
 
