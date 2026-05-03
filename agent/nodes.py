@@ -412,16 +412,36 @@ Evaluate thoroughly."""
     misconception = parsed.get("misconception", "")
     feedback      = parsed.get("feedback", "Keep trying!")
 
-    if right and right.lower() not in ("nothing yet", "none", ""):
-        enriched = f"✅ You got: {right}. " + (
-            f"❌ Missing: {misconception}"
-            if misconception and misconception.lower() != "none"
-            else feedback
-        )
+    # ── Score-band label + motivational message ────────────────────────────
+    if confidence >= 0.90:
+        band = "🏆 Excellent!"
+        tip  = "Perfect understanding — you've mastered this."
+    elif confidence >= 0.80:
+        band = "✅ Correct!"
+        tip  = "Solid understanding. You're ready to move on."
+    elif confidence >= 0.70:
+        band = "📈 Almost there!"
+        tip  = "Your response can be improved — you're missing one small detail."
+    elif confidence >= 0.50:
+        band = "🔶 Partial credit"
+        tip  = "Your response can be improved — you understood part of it but the core idea needs work."
+    elif confidence >= 0.25:
+        band = "🔁 On the right track"
+        tip  = "Your response can be improved — try focusing on the key definition."
     else:
-        enriched = feedback
+        band = "❌ Needs work"
+        tip  = "Your response can be improved — review the explanation above and try again."
 
-    log.info(f"[response_evaluator] confidence={confidence:.2f}")
+    # Build enriched feedback string
+    parts = [f"**{band}** {tip}"]
+    if right and right.lower() not in ("nothing yet", "none", ""):
+        parts.append(f"✅ What you got right: {right}")
+    if misconception and misconception.lower() not in ("none", ""):
+        parts.append(f"❌ Gap identified: {misconception}")
+    parts.append(f"💡 {feedback}")
+    enriched = "\n\n".join(parts)
+
+    log.info(f"[response_evaluator] confidence={confidence:.2f} band='{band}'")
     return {
         "confidence":      confidence,
         "attempts":        cur_attempts + 1,
